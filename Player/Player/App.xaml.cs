@@ -19,10 +19,12 @@ namespace Player
 
         protected override void OnSleep()
         {
+            //(MainPage as MainPage)?.OnAppSleep(this, EventArgs.Empty);
         }
 
         protected override void OnResume()
         {
+            //(MainPage as MainPage)?.OnAppResumed(this, EventArgs.Empty);
         }
     }
 }

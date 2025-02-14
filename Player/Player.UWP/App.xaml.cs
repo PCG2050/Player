@@ -14,6 +14,7 @@ using Windows.UI.Xaml.Data;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
+using Xam.Forms.VideoPlayer.UWP;
 
 namespace Player.UWP
 {
@@ -56,7 +57,10 @@ namespace Player.UWP
                 rootFrame = new Frame();
 
                 rootFrame.NavigationFailed += OnNavigationFailed;
+                Xamarin.Forms.DependencyService.Register<VideoPicker>();
+                Xam.Forms.VideoPlayer.UWP.VideoPlayerRenderer.Init();
                 Xamarin.Forms.Forms.Init(e);
+               
 
                 if (e.PreviousExecutionState == ApplicationExecutionState.Terminated)
                 {
