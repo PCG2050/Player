@@ -11,3 +11,6 @@ bld/
 [Ll]ogs/
 # Visual Studio 2015 cache/options directory
 .vs/
+*.user
+*.suo
+*.userprefs
