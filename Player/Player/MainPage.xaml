@@ -3,9 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="Player.MainPage">
 
-    <StackLayout>
-        <ContentView x:Name="VideoContainer" HorizontalOptions="FillAndExpand" VerticalOptions="FillAndExpand" />
-        <Slider x:Name="DurationSlider" Minimum="0" Maximum="100" Value="0" HorizontalOptions="FillAndExpand" VerticalOptions="End" />
-        <WebView x:Name="QuestionWebView" HorizontalOptions="FillAndExpand" VerticalOptions="FillAndExpand" IsVisible="False" />
-    </StackLayout>
+    <AbsoluteLayout>
+        <ContentView x:Name="VideoContainer" AbsoluteLayout.LayoutFlags="All" AbsoluteLayout.LayoutBounds="0,0,1,1" />
+        <Slider x:Name="DurationSlider" Minimum="0" Maximum="100" Value="0" AbsoluteLayout.LayoutFlags="All" AbsoluteLayout.LayoutBounds="0,1,1,0.1" />
+        <WebView x:Name="QuestionWebView"
+                 AbsoluteLayout.LayoutFlags="PositionProportional"
+                 AbsoluteLayout.LayoutBounds="0.5,0.5,0.8,0.8"
+                 IsVisible="False"
+                 Navigating="QuestionWebView_Navigating" />
+    </AbsoluteLayout>
 </ContentPage>

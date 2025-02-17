@@ -4,6 +4,8 @@ using Android.App;
 using Android.Content.PM;
 using Android.Runtime;
 using Android.OS;
+using LibVLCSharp.Shared;
+using LibVLCSharp.Forms.Shared;
 
 namespace Player.Droid
 {
@@ -13,6 +15,10 @@ namespace Player.Droid
         protected override void OnCreate(Bundle savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
+
+            // Core.Initialize();
+            //LibVLCSharpFormsRenderer.Init();
+            //LibVLCSharp.Forms.Shared.LibVLCSharpFormsRenderer.Init();
 
             Xamarin.Essentials.Platform.Init(this, savedInstanceState);
             global::Xamarin.Forms.Forms.Init(this, savedInstanceState);

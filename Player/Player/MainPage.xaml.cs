@@ -27,6 +27,10 @@ namespace Player
             SetupVideoPlayer();
             LoadQuestions();
 
+            
+            // Enable JavaScript in WebView
+            QuestionWebView.Navigating += QuestionWebView_Navigating;
+
             //Handle lifecycle events
             MessagingCenter.Subscribe<string>(this, "OnPause", app =>
             {
@@ -52,23 +56,36 @@ namespace Player
                 }
                 else
                 {
-                    _videoView = new VideoView { HorizontalOptions = LayoutOptions.FillAndExpand, VerticalOptions = LayoutOptions.FillAndExpand };
+                    _videoView = new VideoView
+                    {
+                        HorizontalOptions = LayoutOptions.FillAndExpand,
+                        VerticalOptions = LayoutOptions.FillAndExpand
+                    };
                     VideoContainer.Content = _videoView;
 
-                    _videoView.MediaPlayerChanged += MediaPlayerChanged;
+                    if (_mediaPlayer == null)
+                    {
+                        SetupVlcPlayer();
+                    }
 
                     _videoView.MediaPlayer = _mediaPlayer;
-                    _videoView.MediaPlayer.Position = _position;
-                    _position = 0;
+                    if (_mediaPlayer.Media != null)
+                    {
+                        _mediaPlayer.Play();
+                        _mediaPlayer.Time = (long)(_position * 1000); // Restore position
+                    }
                 }
             });
 
-            Device.StartTimer(TimeSpan.FromSeconds(1), () =>
+        }
+        private void QuestionWebView_Navigating(object sender, WebNavigatingEventArgs e)
+        {
+            if (e.Url.StartsWith("js:"))
             {
-                UpdateSlider();
-                CheckForQuestions();
-                return true;
-            });
+                e.Cancel = true; // Prevent actual navigation
+                string selectedOption = e.Url.Substring(3); // Extract selected answer
+                HandleWebViewMessage(selectedOption);
+            }
         }
 
         private void SetupVideoPlayer()
@@ -86,21 +103,68 @@ namespace Player
             VideoContainer.Content = _videoView;
         }
 
-        private void SetupVlcPlayer()
+        private async void SetupVlcPlayer()
         {
-            Core.Initialize();
-            _libVLC = new LibVLC();
-            _mediaPlayer = new MediaPlayer(_libVLC);
-
-            _videoView = new VideoView
+            try
             {
-                MediaPlayer = _mediaPlayer,
-                VerticalOptions = LayoutOptions.FillAndExpand,
-                HorizontalOptions = LayoutOptions.FillAndExpand
-            };
+                await Task.Run(() =>
+                {
+                    Core.Initialize();
+                    _libVLC = new LibVLC();
+                    _mediaPlayer = new MediaPlayer(_libVLC);
 
-            var media = new Media(_libVLC, new Uri(videoUrl));
-            _mediaPlayer.Media = media;
+                    var media = new Media(_libVLC, videoUrl, FromType.FromLocation);
+                    media.AddOption(":network-caching=3000");
+                    media.AddOption(":file-caching=3000");
+                    media.AddOption(":live-caching=3000");
+                    media.AddOption(":disk-caching=3000");
+                    media.AddOption(":rtsp-caching=3000");
+
+                    _mediaPlayer.Media = media;
+                });
+
+                _videoView = new VideoView
+                {
+                    MediaPlayer = _mediaPlayer,
+                    VerticalOptions = LayoutOptions.FillAndExpand,
+                    HorizontalOptions = LayoutOptions.FillAndExpand
+                };
+
+                _mediaPlayer.Play();
+                Device.StartTimer(TimeSpan.FromMilliseconds(1000), () =>
+                {
+                    UpdateSlider();
+                    CheckForQuestions();
+                    return true;
+                });
+                Debug.WriteLine("VLC PLAYER SETUP COMPLETE");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error setting up VLC player: {ex.Message}");
+            }
+        }
+
+
+
+        private void CheckForQuestions()
+        {
+            if (_mediaPlayer == null)
+                return;
+            if(_questionGroups == null || _questionGroups.Count == 0)
+            {
+                return;
+            }
+
+            var currentTime = TimeSpan.FromMilliseconds(_mediaPlayer.Time);
+            foreach (var timestamp in _questionGroups.Keys)
+            {
+                if (currentTime >= timestamp && _currentQuestionIndex[timestamp] < _questionGroups[timestamp].Count)
+                {
+                    ShowNextQuestion(timestamp);
+                    break;
+                }
+            }
         }
 
         private void SetupUwpPlayer()
@@ -116,17 +180,19 @@ namespace Player
             VideoContainer.Content = uwpPlayer;
         }
 
-        private void OnPlayButtonClicked(object sender, EventArgs e)
-        {
-            if (Device.RuntimePlatform == Device.Android || Device.RuntimePlatform == Device.iOS)
-            {
-                _mediaPlayer?.Play();
-            }
-            else if (Device.RuntimePlatform == Device.UWP)
-            {
-                (VideoContainer.Content as Xam.Forms.VideoPlayer.VideoPlayer)?.Play();
-            }
-        }
+        //private void OnPlayButtonClicked(object sender, EventArgs e)
+        //{
+        //    if (Device.RuntimePlatform == Device.Android || Device.RuntimePlatform == Device.iOS)
+        //    {
+        //        _mediaPlayer?.Play();
+        //    }
+        //    else if (Device.RuntimePlatform == Device.UWP)
+        //    {
+        //        (VideoContainer.Content as Xam.Forms.VideoPlayer.VideoPlayer)?.Play();
+        //    }
+        //}
+
+        
 
         //Pause when app goes to background
         public void OnAppSleep(Object sender, EventArgs e)
@@ -146,6 +212,16 @@ namespace Player
 
             if (Device.RuntimePlatform == Device.Android || Device.RuntimePlatform == Device.iOS)
             {
+                if (_videoView == null)
+                {
+                    _videoView = new VideoView
+                    {
+                        VerticalOptions = LayoutOptions.FillAndExpand,
+                        HorizontalOptions = LayoutOptions.FillAndExpand
+                    };
+                    VideoContainer.Content = _videoView; // Add VideoView to the UI
+                }
+
                 _videoView.MediaPlayerChanged += MediaPlayerChanged;
 
                 Core.Initialize();
@@ -175,6 +251,14 @@ namespace Player
             }
         }
 
+
+        //protected override void OnDisappearing()
+        //{
+        //    base.OnDisappearing();
+        //    MessagingCenter.Unsubscribe<string>(this, "OnPause");
+        //    MessagingCenter.Unsubscribe<string>(this, "OnRestart");
+        //}
+
         private void MediaPlayerChanged(object sender, EventArgs e)
         {
             _mediaPlayer.Play();
@@ -185,8 +269,8 @@ namespace Player
             _questionGroups = new Dictionary<TimeSpan, List<Question>>();
             _currentQuestionIndex = new Dictionary<TimeSpan, int>();
 
-            var group1Time = TimeSpan.FromSeconds(20);
-            var group2Time = TimeSpan.FromSeconds(30);
+            var group1Time = TimeSpan.FromSeconds(10);
+            var group2Time = TimeSpan.FromSeconds(20);
 
             _questionGroups[group1Time] = new List<Question>
             {
@@ -230,7 +314,7 @@ namespace Player
                 _currentQuestionIndex[timestamp] = 0;
             }
         }
-
+        
         private void ShowNextQuestion(TimeSpan timestamp)
         {
             int index = _currentQuestionIndex[timestamp];
@@ -267,15 +351,34 @@ namespace Player
 
         private string GenerateQuestionHtml(Question question)
         {
-            var optionsHtml = string.Join("", question.Options.ConvertAll(option => $"<button onclick=\"window.external.notify('{option}')\">{option}</button>"));
+            var optionsHtml = string.Join("", question.Options.ConvertAll(option =>
+                $"<div style='margin: 10px 0;'><button style='width: 100%; padding: 10px;' onclick=\"sendMessage('{option}')\">{option}</button></div>"));
+
             return $@"
-                <html>
-                <body>
-                    <h2>{question.QuestionText}</h2>
-                    {optionsHtml}
-                </body>
-                </html>";
-        }
+            <html>
+            <head>
+                <style>
+                    body {{
+                        font-family: Arial, sans-serif;
+                        text-align: center;
+                        padding: 20px;
+                    }}
+                    h2 {{
+                        margin-bottom: 20px;
+                    }}
+                </style>
+                <script type='text/javascript'>
+                    function sendMessage(option) {{
+                        window.location.href = 'js:' + option;
+                    }}
+                </script>
+            </head>
+            <body>
+                <h2>{question.QuestionText}</h2>
+                {optionsHtml}
+            </body>
+            </html>";
+                }
 
         private void UpdateSlider()
         {
@@ -285,26 +388,64 @@ namespace Player
             _isSliderUpdating = true;
             Device.BeginInvokeOnMainThread(() =>
             {
-                DurationSlider.Maximum = _mediaPlayer.Media.Duration / 1000.0;
-                DurationSlider.Value = _mediaPlayer.Time / 1000.0;
+                var duration = _mediaPlayer.Media.Duration;
+                if (duration > 0)
+                {
+                    DurationSlider.Maximum = duration / 1000.0;
+                    DurationSlider.Value = _mediaPlayer.Time / 1000.0;
+                }
                 _isSliderUpdating = false;
             });
         }
 
-        private void CheckForQuestions()
-        {
-            if (_mediaPlayer == null)
-                return;
+        
 
-            var currentTime = TimeSpan.FromMilliseconds(_mediaPlayer.Time);
-            foreach (var timestamp in _questionGroups.Keys)
+        private void HandleWebViewMessage(string message)
+        {
+            Device.BeginInvokeOnMainThread(() =>
             {
-                if (currentTime >= timestamp && _currentQuestionIndex[timestamp] < _questionGroups[timestamp].Count)
+                var currentTime = TimeSpan.FromMilliseconds(_mediaPlayer.Time);
+                foreach (var timestamp in _questionGroups.Keys)
                 {
-                    ShowNextQuestion(timestamp);
-                    break;
+                    if (currentTime >= timestamp && _currentQuestionIndex[timestamp] < _questionGroups[timestamp].Count)
+                    {
+                        var question = _questionGroups[timestamp][_currentQuestionIndex[timestamp]];
+                        if (message == question.CorrectAnswer)
+                        {
+                            _currentQuestionIndex[timestamp]++;
+                            if (_currentQuestionIndex[timestamp] < _questionGroups[timestamp].Count)
+                            {
+                                ShowNextQuestion(timestamp);
+                            }
+                            else
+                            {
+                                QuestionWebView.IsVisible = false;
+                                _mediaPlayer.Play();
+                            }
+                        }
+                        else
+                        {
+                            var html = GenerateQuestionHtmlWithFeedback(question, message);
+                            QuestionWebView.Source = new HtmlWebViewSource { Html = html };
+                        }
+                        break;
+                    }
                 }
-            }
+            });
+        }
+
+        private string GenerateQuestionHtmlWithFeedback(Question question, string selectedOption)
+        {
+            var optionsHtml = string.Join("", question.Options.ConvertAll(option =>
+                $"<button onclick=\"window.external.notify('{option}')\" style=\"background-color:{(option == selectedOption ? "red" : "lightgray")}\">{option}</button>"));
+            return $@"
+            <html>
+            <body>
+                <h2>{question.QuestionText}</h2>
+                {optionsHtml}
+                <p style='color: red;'>Wrong Answer! Try again.</p>
+            </body>
+            </html> ";
         }
     }
 
